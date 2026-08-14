@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meldas 圓弧鏈計算器</title>
+<style>
+  :root{
+    --bg:#0b0e13; --panel:#151a22; --line:#2a313d; --fg:#ffb340;
+    --dim:#7d8899; --acc:#4cc2ff; --ok:#4ade80; --err:#ff6b6b; --warn:#ffc46b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:#e6eaf0;
+    font:13px/1.55 "Consolas","Microsoft JhengHei",monospace}
+  .wrap{max-width:1240px;margin:0 auto;padding:18px}
+  h1{font-size:17px;margin:0 0 3px;color:var(--fg)}
+  .sub{color:var(--dim);font-size:11px;margin-bottom:14px}
+
+  .tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--line)}
+  .tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--dim);
+    padding:8px 14px;cursor:pointer;font:inherit;font-size:12px}
+  .tabs button.on{color:var(--acc);border-bottom-color:var(--acc);font-weight:700}
+
+  .grid{display:grid;grid-template-columns:minmax(360px,0.85fr) minmax(380px,1.15fr);gap:16px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:13px}
+  .panel h2{font-size:11px;margin:0 0 9px;color:var(--acc);
+    text-transform:uppercase;letter-spacing:.1em}
+
+  label{display:block;font-size:11px;color:var(--dim);margin:9px 0 4px}
+  .opts{display:flex;gap:6px;flex-wrap:wrap}
+  .opts button{flex:1;min-width:96px;background:#212936;color:#e6eaf0;
+    border:1px solid var(--line);border-radius:4px;padding:6px;cursor:pointer;font:inherit;font-size:11px}
+  .opts button.on{background:var(--acc);color:#0a0d12;border-color:var(--acc);font-weight:700}
+
+  textarea{width:100%;background:#070a0e;color:var(--fg);border:1px solid var(--line);
+    border-radius:4px;padding:9px;font:inherit;font-size:12px;resize:vertical;line-height:1.7}
+  #prog{height:210px}
+  #pts{height:180px}
+  input[type=text]{width:100%;background:#070a0e;color:#e6eaf0;border:1px solid var(--line);
+    border-radius:4px;padding:6px;font:inherit}
+
+  .go{width:100%;margin-top:11px;background:var(--acc);color:#0a0d12;border:0;
+    border-radius:4px;padding:10px;font:inherit;font-weight:700;cursor:pointer;font-size:13px}
+
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:right;color:var(--dim);font-weight:400;padding:4px 5px;
+     border-bottom:1px solid var(--line);font-size:10.5px}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:4px 5px;border-bottom:1px solid #202631;text-align:right;white-space:nowrap}
+  tr.bad td{background:#2e1717}
+  tr.warnrow td{background:#2e2717}
+  .tag{font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700}
+  .tag.ok{background:#173a24;color:var(--ok)}
+  .tag.bad{background:#3a1717;color:var(--err)}
+  .tag.warn{background:#3a3017;color:var(--warn)}
+  .scroll{overflow-x:auto}
+
+  .msg{margin-top:9px;padding:8px 10px;border-radius:4px;font-size:11.5px;white-space:pre-wrap}
+  .msg.err{background:#2e1717;color:var(--err);border:1px solid #4d2626}
+  .msg.warn{background:#2e2717;color:var(--warn);border:1px solid #4d4126}
+  .msg.ok{background:#152e1d;color:var(--ok);border:1px solid #264d33}
+
+  pre.code{background:#070a0e;border:1px solid var(--line);border-radius:4px;
+    padding:10px;margin:6px 0 0;font-size:12px;overflow-x:auto;color:var(--fg);line-height:1.7}
+  svg{width:100%;height:auto;background:#070a0e;border:1px solid var(--line);border-radius:4px;margin-top:8px}
+  .hint{color:var(--dim);font-size:10.5px;margin-top:5px}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Meldas 圓弧鏈計算器</h1>
+  <div class="sub">連續 R 圓弧輪廓 —— 程式驗證 ⇄ 量點反算</div>
+
+  <div class="tabs">
+    <button id="tB" class="on">程式 → 幾何（驗證）</button>
+    <button id="tA">量點 → 程式（反算）</button>
+  </div>
+
+  <!-- ============ 共用設定 ============ -->
+  <div class="panel" style="margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <label>X 座標型式</label>
+        <div class="opts">
+          <button id="mDia" class="on">X = 直徑值</button>
+          <button id="mRad">X = 半徑值</button>
+        </div>
+        <div class="hint">R 指令永遠是半徑量，不受此設定影響。</div>
+      </div>
+      <div>
+        <label>刀塔位置（決定 G2/G3 的實際轉向）</label>
+        <div class="opts">
+          <button id="tRear" class="on">後刀塔</button>
+          <button id="tFront">前刀塔</button>
+        </div>
+        <div class="hint">後刀塔：+X 向上、+Z 向右時 G2 為順時針。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 分頁 B：程式 → 幾何 ============ -->
+  <div id="panB">
+    <div class="grid">
+      <div class="panel">
+        <h2>貼上程式（NC 碼）</h2>
+        <textarea id="prog">N2 G0 X-359.510 S2222 M3 ;
+G0 Z98.332 ;
+G03 X-349.010 Z94.812 R5.0 F450 ;
+G2 X-321.164 Z65.605 R112.0 ;
+X-276.164 Z38.334 R158.4 ;
+X-164.858 Z6.519 R125.10 ;
+X-58.714 Z-0.8 R208.0 ;
+G1 X1.8 Z-1.0 ;
+G0 Z120. M9 S2000 ;
+G28 U0 W0 S1600 ;</textarea>
+        <div class="hint">支援模態 G 碼（省略 G2/G3 的續行）、R 或 I/K、U/W 增量、括號註解。</div>
+        <button class="go" id="runB">解 析</button>
+        <div id="msgB"></div>
+      </div>
+
+      <div class="panel">
+        <h2>逐段幾何</h2>
+        <div class="scroll"><table id="outB"><tr><td>尚未解析</td></tr></table></div>
+        <svg id="plotB" viewBox="0 0 480 340"></svg>
+        <div class="hint">Z 向右、X 半徑值向上。● 端點　✕ 圓心　虛線 = 半徑</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 分頁 A：量點 → 程式 ============ -->
+  <div id="panA" class="hide">
+    <div class="grid">
+      <div class="panel">
+        <h2>量測點</h2>
+        <label>座標（一行一點：X Z）—— <b>空白行 = 分段</b>，每段各自擬合一個圓弧</label>
+        <textarea id="pts">-359.510 98.332
+-355.900 96.900
+-349.010 94.812
+
+-349.010 94.812
+-338.000 84.000
+-330.000 74.000
+-321.164 65.605</textarea>
+        <div class="hint">每段至少 3 點。段與段的接點請重複輸入，接縫才會連續。</div>
+
+        <label>局部 R 掃描</label>
+        <div class="opts">
+          <button id="scanOn" class="on">開啟</button>
+          <button id="scanOff">關閉</button>
+        </div>
+        <div class="hint">用連續 3 點滾動計算局部 R —— R 值跳動處就是圓弧的分界。不確定怎麼分段時先看這個。</div>
+
+        <button class="go" id="runA">計 算</button>
+        <div id="msgA"></div>
+      </div>
+
+      <div class="panel">
+        <h2>擬合結果</h2>
+        <div class="scroll"><table id="outA"><tr><td>尚未計算</td></tr></table></div>
+        <div id="scanBox"></div>
+        <div id="gcodeA"></div>
+        <svg id="plotA" viewBox="0 0 480 340"></svg>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let diaMode = true, rearPost = true, scanOn = true;
+const KINK_WARN = 1.0, KINK_BAD = 5.0;   // 接縫角門檻（度）
+
+function toggle(onEl, offEl, set){
+  onEl.onclick  = () => { set(true);  onEl.classList.add('on');  offEl.classList.remove('on'); };
+  offEl.onclick = () => { set(false); offEl.classList.add('on'); onEl.classList.remove('on'); };
+}
+toggle($('mDia'),   $('mRad'),   v => diaMode  = v);
+toggle($('tRear'),  $('tFront'), v => rearPost = v);
+toggle($('scanOn'), $('scanOff'),v => scanOn   = v);
+
+$('tB').onclick = () => { $('tB').classList.add('on'); $('tA').classList.remove('on');
+                          $('panB').classList.remove('hide'); $('panA').classList.add('hide'); };
+$('tA').onclick = () => { $('tA').classList.add('on'); $('tB').classList.remove('on');
+                          $('panA').classList.remove('hide'); $('panB').classList.add('hide'); };
+
+const toR = x => diaMode ? x/2 : x;          // 程式 X → 幾何半徑值
+const toX = r => diaMode ? r*2 : r;          // 幾何半徑值 → 程式 X
+const f3  = v => (v<0?'':'')+v.toFixed(3);
+const deg = r => r*180/Math.PI;
+
+/* ---------- 圓弧幾何：起點 P1、終點 P2、半徑 R、轉向 ----------
+   平面座標 (u,v) = (Z, X半徑值)。後刀塔時 G2 = 此平面上的順時針。
+   R 為負代表優弧（>180°）。                                        */
+function arcFromR(P1, P2, R, cw){
+  const du = P2.u-P1.u, dv = P2.v-P1.v;
+  const L  = Math.hypot(du, dv);
+  const aR = Math.abs(R);
+  if (L < 1e-9)          return { err:'起終點重合' };
+  if (L > 2*aR + 1e-6)   return { err:'弦長 '+L.toFixed(3)+' > 2R '+(2*aR).toFixed(3)+
+                                       '　最小可行 R = '+(L/2).toFixed(3) };
+  const h  = Math.sqrt(Math.max(0, aR*aR - L*L/4)) * (R < 0 ? -1 : 1);
+  const nu = -dv/L, nv = du/L;                       // 左法線（逆時針 +90°）
+  const s  = cw ? -1 : 1;
+  const C  = { u:(P1.u+P2.u)/2 + s*h*nu, v:(P1.v+P2.v)/2 + s*h*nv };
+  return { C, R:aR, cw, ...sweepOf(P1,P2,C,cw) };
+}
+function arcFromIK(P1, P2, I, K, cw){                 // I=X向增量, K=Z向增量（皆半徑量）
+  const C = { u:P1.u + K, v:P1.v + I };
+  const R = Math.hypot(P1.u-C.u, P1.v-C.v);
+  const R2= Math.hypot(P2.u-C.u, P2.v-C.v);
+  const o = { C, R, cw, ...sweepOf(P1,P2,C,cw) };
+  if (Math.abs(R-R2) > 0.01) o.err = '起終點半徑不一致（'+R.toFixed(3)+' vs '+R2.toFixed(3)+'）';
+  return o;
+}
+function sweepOf(P1,P2,C,cw){
+  const a1 = Math.atan2(P1.v-C.v, P1.u-C.u);
+  const a2 = Math.atan2(P2.v-C.v, P2.u-C.u);
+  let sw = cw ? a1-a2 : a2-a1;
+  while (sw <= 1e-9) sw += 2*Math.PI;
+  return { sweep: sw, a1, a2 };
+}
+// 圓上某點的切線方向（前進方向）
+function tangentAt(P, C, cw){
+  const du = P.u-C.u, dv = P.v-C.v, L = Math.hypot(du,dv);
+  return cw ? { u:dv/L, v:-du/L } : { u:-dv/L, v:du/L };
+}
+function angBetween(t1,t2){
+  const d = Math.atan2(t1.u*t2.v - t1.v*t2.u, t1.u*t2.u + t1.v*t2.v);
+  return Math.abs(deg(d));
+}
+
+/* ================= 分頁 B：解析程式 ================= */
+function parseProgram(txt){
+  // 先切行（保留真實行號），行內再切 ; 分段
+  const src = [];
+  txt.replace(/\([^)]*\)/g,' ').split(/\r?\n/).forEach((line,i) => {
+    line.split(';').forEach(b => { if (b.trim()) src.push({ ln:i+1, b:b.toUpperCase().trim() }); });
+  });
+
+  const moves = [], notes = [];
+  let g = null, X = null, Z = null, F = null, noDot = false;
+
+  for (const { ln, b } of src){
+    if (/G\s*0*2[89]/.test(b) || /G\s*0*30/.test(b)) continue;      // G28/G30 原點復歸
+
+    // 只對座標字（X/Z/U/W/R/I/K）檢查小數點，F/S/T/M 不算
+    const num = (w, isCoord) => {
+      // 允許尾隨小數點的 Meldas 寫法（Z120.），且不把它誤判為無小數點輸入
+      const m = b.match(new RegExp(w+'\\s*(-?(?:\\d+\\.?\\d*|\\.\\d+))'));
+      if (!m) return null;
+      if (isCoord && !/\./.test(m[1])) noDot = true;
+      return parseFloat(m[1]);
+    };
+    const gm = b.match(/G\s*0*([0123])(?![0-9])/);
+    if (gm) g = parseInt(gm[1]);
+
+    const nX = num('X',1), nZ = num('Z',1), nU = num('U',1), nW = num('W',1);
+    const nR = num('R',1), nI = num('I',1), nK = num('K',1), nF = num('F',0);
+    if (nF !== null) F = nF;
+
+    let tX = nX !== null ? nX : (nU !== null && X !== null ? X + nU : null);
+    let tZ = nZ !== null ? nZ : (nW !== null && Z !== null ? Z + nW : null);
+    if (tX === null && tZ === null) continue;                        // 純 M/S/T 行
+
+    if (X === null && tX === null) { notes.push('第 '+ln+' 行：X 起始值未知'); }
+    const fromX = X, fromZ = Z;
+    if (tX === null) tX = X;
+    if (tZ === null) tZ = Z;
+
+    if (fromX !== null && fromZ !== null){
+      moves.push({ ln, g, from:{u:fromZ, v:toR(fromX)}, to:{u:tZ, v:toR(tX)},
+                   R:nR, I:nI, K:nK, F, rawX:tX, rawZ:tZ });
+    }
+    X = tX; Z = tZ;
+  }
+  return { moves, notes, noDot };
+}
+
+$('runB').onclick = () => {
+  const { moves, notes, noDot } = parseProgram($('prog').value);
+  const msgs = [];
+  if (noDot) msgs.push(['warn','偵測到沒有小數點的座標值。Meldas 在非小數點輸入時會用最小設定單位解讀\n（例如 X100 = 0.100mm），請確認程式的小數點輸入設定。']);
+
+  const segs = [];
+  for (const m of moves){
+    if (m.g === 2 || m.g === 3){
+      const cw = rearPost ? (m.g === 2) : (m.g === 3);
+      let a;
+      if (m.R !== null)                       a = arcFromR(m.from, m.to, m.R, cw);
+      else if (m.I !== null || m.K !== null)  a = arcFromIK(m.from, m.to, m.I||0, m.K||0, cw);
+      else { segs.push({ m, type:'arc', err:'缺少 R 或 I/K' }); continue; }
+      segs.push({ m, type:'arc', ...a });
+    } else {
+      segs.push({ m, type: m.g === 0 ? 'rapid' : 'line' });
+    }
+  }
+
+  // 切線連續性（只看實際切削的連續段）
+  for (let i=0;i<segs.length-1;i++){
+    const a = segs[i], b = segs[i+1];
+    if (a.type==='rapid' || b.type==='rapid' || a.err || b.err) continue;
+    const tA = a.type==='arc' ? tangentAt(a.m.to, a.C, a.cw)
+             : norm({u:a.m.to.u-a.m.from.u, v:a.m.to.v-a.m.from.v});
+    const tB = b.type==='arc' ? tangentAt(b.m.from, b.C, b.cw)
+             : norm({u:b.m.to.u-b.m.from.u, v:b.m.to.v-b.m.from.v});
+    b.kink = angBetween(tA, tB);
+  }
+  function norm(t){ const L=Math.hypot(t.u,t.v); return {u:t.u/L, v:t.v/L}; }
+
+  // 表格
+  let html = '<tr><th>行</th><th>G</th><th>終點 X</th><th>終點 Z</th><th>R</th>'+
+             '<th>圓心 X'+(diaMode?'(直徑)':'')+'</th><th>圓心 Z</th><th>張角°</th>'+
+             '<th>弧長</th><th>接縫°</th><th>狀態</th></tr>';
+  let arcN = 0, worstKink = 0;
+  for (const s of segs){
+    const m = s.g === undefined ? s.m : s.m;
+    let cls = '', stat = '<span class="tag ok">OK</span>';
+    if (s.err) { cls='bad'; stat = '<span class="tag bad">'+s.err+'</span>'; msgs.push(['err','第 '+m.ln+' 行：'+s.err]); }
+    else if (s.kink !== undefined && s.kink > KINK_BAD){
+      cls='bad';     stat = '<span class="tag bad">明顯轉折</span>';
+    } else if (s.kink !== undefined && s.kink > KINK_WARN){
+      cls='warnrow'; stat = '<span class="tag warn">輕微稜線</span>';
+    }
+    if (s.kink !== undefined) worstKink = Math.max(worstKink, s.kink);
+    if (s.type === 'arc' && !s.err) arcN++;
+
+    html += '<tr class="'+cls+'">'
+      + '<td>'+m.ln+'</td>'
+      + '<td>'+(m.g===0?'G0':m.g===1?'G1':'G'+m.g)+'</td>'
+      + '<td>'+m.rawX.toFixed(3)+'</td><td>'+m.rawZ.toFixed(3)+'</td>'
+      + '<td>'+(s.R!==undefined?s.R.toFixed(3):'—')+'</td>'
+      + '<td>'+(s.C?toX(s.C.v).toFixed(3):'—')+'</td>'
+      + '<td>'+(s.C?s.C.u.toFixed(3):'—')+'</td>'
+      + '<td>'+(s.sweep?deg(s.sweep).toFixed(2):'—')+'</td>'
+      + '<td>'+(s.sweep?(s.sweep*s.R).toFixed(2):
+                (s.type!=='rapid'?Math.hypot(m.to.u-m.from.u,m.to.v-m.from.v).toFixed(2):'—'))+'</td>'
+      + '<td>'+(s.kink!==undefined?s.kink.toFixed(2):'—')+'</td>'
+      + '<td>'+(s.type==='rapid'?'<span style="color:#7d8899">快速</span>':stat)+'</td></tr>';
+  }
+  $('outB').innerHTML = html;
+
+  if (arcN){
+    const k = worstKink.toFixed(2)+'°';
+    if (worstKink <= KINK_WARN)
+      msgs.unshift(['ok','解析 '+arcN+' 段圓弧，最大接縫角偏差 '+k+
+        ' —— 相切良好，屬 CAM 圓弧擬合的正常範圍。']);
+    else if (worstKink <= KINK_BAD)
+      msgs.unshift(['warn','最大接縫角偏差 '+k+' —— 接縫非完全相切，但幅度小。\n'+
+        '這是 CAM 用圓弧逼近自由曲線的常見結果（擬合公差是「距離」不是「切線」），\n'+
+        '通常看不出也摸不到。若這裡要求鏡面級平順，才需要回 CAM 收緊公差。']);
+    else
+      msgs.unshift(['err','最大接縫角偏差 '+k+' —— 輪廓在該處有明顯轉折。\n'+
+        '若設計本意是平滑曲面，代表某段的 R 值或端點座標有誤，請回頭核對。']);
+  }
+
+  $('msgB').innerHTML = msgs.map(m=>'<div class="msg '+m[0]+'">'+m[1]+'</div>').join('');
+  drawChain('plotB', segs);
+};
+
+/* ================= 分頁 A：量點 → 程式 ================= */
+function parseGroups(txt){
+  return txt.split(/\r?\n\s*\r?\n/).map(blk =>
+    blk.split(/\r?\n/).map(l=>{
+      const n = l.trim().replace(/[XZxz]/g,' ').split(/[\s,]+/).filter(v=>v!=='').map(Number);
+      return (n.length>=2 && n.every(isFinite)) ? { u:n[1], v:toR(n[0]), rawX:n[0] } : null;
+    }).filter(Boolean)
+  ).filter(g=>g.length);
+}
+function fitCircle(p){                                  // 3 點精確 / N 點最小平方（Kåsa）
+  if (p.length === 3){
+    const [A,B,C] = p;
+    const a=2*(B.v-A.v), b=2*(B.u-A.u), c=(B.v*B.v+B.u*B.u)-(A.v*A.v+A.u*A.u);
+    const d=2*(C.v-B.v), e=2*(C.u-B.u), f=(C.v*C.v+C.u*C.u)-(B.v*B.v+B.u*B.u);
+    const det=a*e-d*b;
+    if (Math.abs(det)<1e-12) return null;
+    const v=(c*e-f*b)/det, u=(a*f-d*c)/det;
+    return { C:{u,v}, R:Math.hypot(A.v-v, A.u-u) };
+  }
+  const n=p.length; let Sv=0,Su=0,Svv=0,Suu=0,Svu=0,Svvv=0,Suuu=0,Svuu=0,Suvv=0;
+  for (const q of p){ const v=q.v,u=q.u,vv=v*v,uu=u*u;
+    Sv+=v;Su+=u;Svv+=vv;Suu+=uu;Svu+=v*u;Svvv+=vv*v;Suuu+=uu*u;Svuu+=v*uu;Suvv+=u*vv; }
+  const A=n*Svv-Sv*Sv, B=n*Svu-Sv*Su, Cc=n*Suu-Su*Su;
+  const D=0.5*(n*Svuu-Sv*Suu + n*Svvv-Sv*Svv);
+  const E=0.5*(n*Suvv-Su*Svv + n*Suuu-Su*Suu);
+  const det=A*Cc-B*B;
+  if (Math.abs(det)<1e-12) return null;
+  const v=(D*Cc-B*E)/det, u=(A*E-B*D)/det;
+  let s=0; for (const q of p) s+=Math.hypot(q.v-v, q.u-u);
+  return { C:{u,v}, R:s/n };
+}
+
+$('runA').onclick = () => {
+  const groups = parseGroups($('pts').value);
+  const msgs = [], segs = [], lines = [];
+
+  if (!groups.length){ $('msgA').innerHTML='<div class="msg err">沒有解析到座標點。</div>'; return; }
+
+  let html = '<tr><th>段</th><th>點數</th><th>R</th><th>圓心 X'+(diaMode?'(直徑)':'')+'</th>'
+           + '<th>圓心 Z</th><th>張角°</th><th>殘差</th><th>±0.01mm→ΔR</th><th>轉向</th></tr>';
+  let worstSens = 0;
+  let lastDir = null, first = true;
+
+  groups.forEach((p,gi) => {
+    if (p.length < 3){
+      msgs.push(['err','第 '+(gi+1)+' 段只有 '+p.length+' 點 —— 至少要 3 點。']);
+      html += '<tr class="bad"><td>'+(gi+1)+'</td><td>'+p.length+'</td><td colspan="6">點數不足</td></tr>';
+      return;
+    }
+    const fit = fitCircle(p);
+    if (!fit){
+      msgs.push(['err','第 '+(gi+1)+' 段三點共線 —— 這是直線段，不是圓弧。']);
+      html += '<tr class="bad"><td>'+(gi+1)+'</td><td>'+p.length+'</td><td colspan="6">共線（直線段）</td></tr>';
+      return;
+    }
+    const { C, R } = fit;
+    let dev = 0;
+    for (const q of p) dev = Math.max(dev, Math.abs(Math.hypot(q.v-C.v, q.u-C.u) - R));
+
+    // 轉向：(C→起點) × (C→中間點) 的外積，負值 = 順時針
+    const P1=p[0], Pm=p[Math.floor(p.length/2)], P2=p[p.length-1];
+    const cross = (P1.u-C.u)*(Pm.v-C.v) - (P1.v-C.v)*(Pm.u-C.u);
+    const cw = cross < 0;
+    const sw = sweepOf(P1,P2,C,cw).sweep;
+    const gWord = (rearPost ? (cw?2:3) : (cw?3:2));
+
+    segs.push({ type:'arc', C, R, cw, m:{ from:P1, to:P2, rawX:P2.rawX, rawZ:P2.u } });
+
+    let cls = dev > 0.02 ? 'warnrow' : '';
+    if (dev > 0.02) msgs.push(['warn','第 '+(gi+1)+' 段殘差 '+dev.toFixed(4)+
+      ' mm —— 這些點可能不在同一段圓弧上，或量測有誤。']);
+
+    // R 對量測誤差的放大倍率：由弦長 L 與弓高 h 決定，dR/dh = -L²/(8h²) + 1/2
+    const L = Math.hypot(P2.u-P1.u, P2.v-P1.v);
+    const h = R - Math.sqrt(Math.max(0, R*R - L*L/4));
+    const sens = Math.abs(-L*L/(8*h*h) + 0.5) * 0.01;
+    worstSens = Math.max(worstSens, sens);
+    const sCls = sens > 0.5 ? 'color:#ff6b6b;font-weight:700'
+               : sens > 0.1 ? 'color:#ffc46b' : 'color:#7d8899';
+
+    html += '<tr class="'+cls+'"><td>'+(gi+1)+'</td><td>'+p.length+'</td>'
+      + '<td><b style="color:#4ade80">'+R.toFixed(3)+'</b></td>'
+      + '<td>'+toX(C.v).toFixed(3)+'</td><td>'+C.u.toFixed(3)+'</td>'
+      + '<td>'+deg(sw).toFixed(2)+'</td><td>'+dev.toFixed(4)+'</td>'
+      + '<td style="'+sCls+'">±'+sens.toFixed(3)+'</td>'
+      + '<td>G'+gWord+'</td></tr>';
+
+    // 依 Meldas 慣例輸出：模態省略同向 G 碼，優弧用負 R
+    const rw = (sw > Math.PI ? '-' : '') + R.toFixed(3);
+    const gTxt = (gWord === lastDir) ? '   ' : ('G'+gWord+' ');
+    lines.push(gTxt + 'X' + P2.rawX.toFixed(3) + ' Z' + P2.u.toFixed(3) + ' R' + rw +
+               (first ? ' F450' : '') + ' ;');
+    lastDir = gWord; first = false;
+  });
+
+  $('outA').innerHTML = html;
+
+  if (worstSens > 0.5)
+    msgs.unshift(['err','誤差放大嚴重：量測點差 0.01mm，算出的 R 會差 '+worstSens.toFixed(2)+
+      ' mm。\n原因是「大 R + 短弧」—— 弧很平，圓心位置本來就難定。\n'+
+      '對策：把量測點沿弧盡量拉遠（拉長弦長最有效），或改用樣板／輪廓儀，\n'+
+      '不要指望靠幾個點反推大 R 的精確值。']);
+  else if (worstSens > 0.1)
+    msgs.unshift(['warn','誤差放大 '+ (worstSens/0.01).toFixed(0) +' 倍：量測點差 0.01mm → R 差 '+
+      worstSens.toFixed(3)+' mm。取點請盡量沿弧拉開。']);
+
+  $('msgA').innerHTML = msgs.map(m=>'<div class="msg '+m[0]+'">'+m[1]+'</div>').join('');
+
+  const s0 = groups[0] && groups[0][0];
+  $('gcodeA').innerHTML = '<pre class="code">' +
+    (s0 ? '( 起點 X'+s0.rawX.toFixed(3)+' Z'+s0.u.toFixed(3)+' )\n' : '') +
+    lines.join('\n') + '</pre>' +
+    '<div class="hint">優弧（&gt;180°）自動輸出負 R。貼回程式前請自行確認進刀/退刀與 F 值。</div>';
+
+  // 局部 R 掃描
+  if (scanOn){
+    const all = groups.flat();
+    let sh = '<div class="hint" style="margin-top:10px">局部 R 掃描（滾動 3 點）</div>'
+           + '<div class="scroll"><table><tr><th>點</th><th>X</th><th>Z</th><th>局部 R</th><th>變化</th></tr>';
+    let prev = null;
+    for (let i=1;i<all.length-1;i++){
+      const fit = fitCircle([all[i-1], all[i], all[i+1]]);
+      const R = fit ? fit.R : null;
+      const jump = (R && prev) ? Math.abs(R-prev)/prev*100 : null;
+      sh += '<tr'+(jump>15?' class="warnrow"':'')+'><td>'+(i+1)+'</td>'
+          + '<td>'+all[i].rawX.toFixed(3)+'</td><td>'+all[i].u.toFixed(3)+'</td>'
+          + '<td>'+(R?R.toFixed(3):'共線')+'</td>'
+          + '<td>'+(jump!==null?jump.toFixed(1)+'%':'—')+'</td></tr>';
+      prev = R;
+    }
+    $('scanBox').innerHTML = sh + '</table></div>';
+  } else $('scanBox').innerHTML = '';
+
+  drawChain('plotA', segs);
+};
+
+/* ================= 繪圖 ================= */
+function drawChain(id, segs){
+  const W=480, H=340, pad=30;
+  const us=[], vs=[];
+  for (const s of segs){
+    if (!s.m) continue;
+    us.push(s.m.from.u, s.m.to.u); vs.push(s.m.from.v, s.m.to.v);
+    if (s.C && !s.err){ us.push(s.C.u); vs.push(s.C.v); }
+  }
+  if (!us.length){ $(id).innerHTML=''; return; }
+  const u0=Math.min(...us), u1=Math.max(...us), v0=Math.min(...vs), v1=Math.max(...vs);
+  const sc=Math.min((W-2*pad)/Math.max(u1-u0,1e-6), (H-2*pad)/Math.max(v1-v0,1e-6));
+  const cu=(u0+u1)/2, cv=(v0+v1)/2;
+  const PX=u=>W/2+(u-cu)*sc, PY=v=>H/2-(v-cv)*sc;
+
+  let g='';
+  for (const s of segs){
+    if (!s.m) continue;
+    const A=s.m.from, B=s.m.to;
+    if (s.type==='rapid'){
+      g+='<line x1="'+PX(A.u)+'" y1="'+PY(A.v)+'" x2="'+PX(B.u)+'" y2="'+PY(B.v)+
+         '" stroke="#3a4453" stroke-width="1" stroke-dasharray="4 4"/>';
+    } else if (s.type==='arc' && !s.err && s.C){
+      // 螢幕 Y 軸翻轉 → SVG 的 sweep flag 與數學轉向相反
+      const large = s.sweep > Math.PI ? 1 : 0;
+      const sweepFlag = s.cw ? 1 : 0;
+      g+='<path d="M '+PX(A.u)+' '+PY(A.v)+' A '+(s.R*sc)+' '+(s.R*sc)+' 0 '+large+' '+
+         sweepFlag+' '+PX(B.u)+' '+PY(B.v)+'" fill="none" stroke="#4cc2ff" stroke-width="2"/>';
+      g+='<line x1="'+PX(s.C.u)+'" y1="'+PY(s.C.v)+'" x2="'+PX(A.u)+'" y2="'+PY(A.v)+
+         '" stroke="#3f4a5c" stroke-width=".7" stroke-dasharray="2 3"/>';
+      g+='<path d="M '+(PX(s.C.u)-3)+' '+(PY(s.C.v)-3)+' l 6 6 M '+(PX(s.C.u)+3)+' '+
+         (PY(s.C.v)-3)+' l -6 6" stroke="#ffc46b" stroke-width="1.2"/>';
+      const mu=(A.u+B.u)/2, mv=(A.v+B.v)/2;
+      g+='<text x="'+PX(mu)+'" y="'+(PY(mv)-6)+'" fill="#7d8899" font-size="9" text-anchor="middle">R'+s.R.toFixed(1)+'</text>';
+    } else if (s.type==='line'){
+      g+='<line x1="'+PX(A.u)+'" y1="'+PY(A.v)+'" x2="'+PX(B.u)+'" y2="'+PY(B.v)+
+         '" stroke="#4ade80" stroke-width="2"/>';
+    } else if (s.err){
+      g+='<line x1="'+PX(A.u)+'" y1="'+PY(A.v)+'" x2="'+PX(B.u)+'" y2="'+PY(B.v)+
+         '" stroke="#ff6b6b" stroke-width="2" stroke-dasharray="3 3"/>';
+    }
+    g+='<circle cx="'+PX(B.u)+'" cy="'+PY(B.v)+'" r="2.5" fill="#e6eaf0"/>';
+  }
+  g+='<line x1="0" y1="'+PY(0)+'" x2="'+W+'" y2="'+PY(0)+
+     '" stroke="#2a313d" stroke-width="1" stroke-dasharray="8 5"/>'
+   +'<text x="6" y="'+(PY(0)-4)+'" fill="#3f4a5c" font-size="9">中心線 X0</text>';
+  $(id).innerHTML = g;
+}
+
+$('runB').click();
+</script>
+</body>
+</html>
